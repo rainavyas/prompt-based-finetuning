@@ -25,6 +25,8 @@ model_parser.add_argument('--rand-seed', type=int, default=None, help='random se
 train_parser = argparse.ArgumentParser(description='Arguments for training the system')
 train_parser.add_argument('--dataset', type=str, default='snli', help='dataset to train the system on')
 train_parser.add_argument('--bias', type=str, default=None, help='whether data should be synthetically biased (e.g. lexical)')
+train_parser.add_argument('--bias-bounds', type=float, nargs = '+', default=None, help='where the bias groups should be splits')
+
 train_parser.add_argument('--lim', type=int, default=None, help='size of data subset to use for debugging')
 
 train_parser.add_argument('--epochs', type=int, default=3, help='number of epochs to train system for')
@@ -33,7 +35,7 @@ train_parser.add_argument('--lr', type=float, default=2e-5, help='learning rate'
 train_parser.add_argument('--data-ordering', action='store_true', help='dynamically batches to minimize padding')
 
 train_parser.add_argument('--grad-clip', type=float, default=1, help='gradient clipping')
-train_parser.add_argument('--freeze-trans', type=int, default=None, help='number of epochs to freeze transformer')
+train_parser.add_argument('--freeze-trans', type=str, default=None, help='number of epochs to freeze transformer')
 
 train_parser.add_argument('--log-every', type=int, default=400, help='logging training metrics every number of examples')
 train_parser.add_argument('--val-every', type=int, default=50_000, help='when validation should be done within epoch')

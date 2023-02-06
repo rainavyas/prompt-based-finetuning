@@ -3,6 +3,7 @@ import re
 import math
 
 from collections import defaultdict
+from types import SimpleNamespace
 from typing import List, Dict, Tuple, TypedDict
 from nltk.corpus import stopwords
 from tqdm import tqdm 
@@ -36,6 +37,7 @@ def create_balanced_data(data, lim:int=None)->list:
     max_num_per_class = min([len(i) for i in groups.values()])
     num_per_class = round(lim/num_class) if lim else max_num_per_class
         
+    print(num_per_class)
     # create final output
     output = []
     for i in groups.keys():
@@ -46,7 +48,47 @@ def create_balanced_data(data, lim:int=None)->list:
     return output
 
 #== Length Biasing Methods ========================================================================#
-def group_by_length(data:list, reverse=False, lim:int=None)->defaultdict:
+def length_score(ex:SimpleNamespace):
+    if hasattr(ex, 'text'):
+        len_score = len(ex.text)
+    else:
+        len_score = len(ex.text_1) + len(ex.text_2)
+    return len_score
+
+def lexical_overlap_score(ex:SimpleNamespace)->float:
+    word_list_1 = remove_stopwords(ex.text_1)
+    word_list_2 = remove_stopwords(ex.text_2)
+
+    intersection = set(word_list_1) & set(word_list_2)
+    union = set(word_list_1 + word_list_2)
+    if len(union) == 0: 
+        return None
+    overlap_score = len(intersection)/len(union)
+
+    #return 1 - overlap score so that 0=entailment 2=contradiction and
+    return 1 - overlap_score
+
+def get_bias_fn(bias_name):
+    """ select bias function to use """
+    if bias_name == 'length':
+        bias_fn = length_score
+    elif bias_name == 'lexical':
+        bias_fn = lexical_overlap_score
+    else:
+        raise ValueError("invalid biasing option, {bias_name}")
+    return bias_fn
+
+def group_by_bias(data:list, bias_name:str, bias_bounds:list, lim:int=None)->defaultdict:
+    # internal function to convert the bias score to group
+    def score_to_group(score:float):
+        for k, v in enumerate(bias_bounds):            
+            if score <= v: 
+                return k
+        return len(bias_bounds)
+
+    # select bias function to use
+    bias_fn = get_bias_fn(bias_name)
+
     # for efficiency, only iterate through enough data
     load_lim = min(lim * 20, len(data)) if lim else len(data)
 
@@ -57,37 +99,44 @@ def group_by_length(data:list, reverse=False, lim:int=None)->defaultdict:
     
     groups = defaultdict(list)
     for ex in tqdm(data[:load_lim], total=load_lim, disable=load_lim<2000):
-        if not reverse:
-            if   len(ex.text.split()) < 300:     groups[ex.label, 0].append(ex)
-            elif len(ex.text.split()) > 300:     groups[ex.label, 1].append(ex)
-        else:
-            if   len(ex.text.split()) < 300:     groups[ex.label, 1].append(ex)
-            elif len(ex.text.split()) > 300:     groups[ex.label, 0].append(ex)
+        bias_score = bias_fn(ex)
+        # skip invalid bias scores
+        if bias_score is None:
+            continue
+        
+        # add example to the relevant group
+        bias_group = score_to_group(bias_score)
+        groups[ex.label, bias_group].append(ex)
     return groups
 
-def create_balanced_length_biased_data(data:list, bias_acc:float=1, reverse=False, lim:int=None)->list:
-    groups = group_by_length(data=data, reverse=reverse, lim=lim)
+def sort_groups_into_biased(groups:defaultdict):
     num_classes = len(set([x[0] for x in groups.keys()]))
-    print('NUM CLASSES: ', num_classes)
 
-    # separate groups into biased and unbiased:
-    new_groups = defaultdict(list)
+    sorted_groups = defaultdict(list)
     for i in range(num_classes):
         # biased class
-        new_groups[i,1] = groups[i,i]
+        sorted_groups[i,1] = groups[i,i]
 
         # unbiased class
         for j in range(num_classes):
-            if i == j: continue
-        new_groups[i,0] += groups[i, (i+j) % num_classes]
-    groups = new_groups
+            if i != j: 
+                sorted_groups[i,0] += groups[i, (i+j) % num_classes]
+    return sorted_groups
+
+def create_biased_balanced_data(data:list, bias_name:str, bias_bounds:list, bias_acc:float=1, lim:int=None)->list:
+    groups = group_by_bias(data=data, bias_name=bias_name, bias_bounds=bias_bounds, lim=lim)
+    num_classes = len(set([x[0] for x in groups.keys()]))
+
+    # separate groups into biased and unbiased:
+    groups = sort_groups_into_biased(groups)
 
     # calculate number of biased rounds to have
     num_biased = min([len(groups[i,1]) for i in range(num_classes)])
     if lim: 
-        num_biased = round((lim * bias_acc)/num_classes)
-    
-    # calculate number of unbiased rounds to have [ b/(u+b) = acc ]
+        num_biased_temp = round((lim * bias_acc)/num_classes)
+        num_biased = min(num_biased, num_biased_temp)
+
+    # calculate number of unbiased rounds to have [ acc = b/(u+b) ]
     num_unbiased = num_biased * ((1 - bias_acc) / bias_acc)
     num_unbiased = int(num_unbiased)
 
@@ -106,102 +155,21 @@ def create_balanced_length_biased_data(data:list, bias_acc:float=1, reverse=Fals
     for i in range(num_classes):
         output += groups[i, 0][:num_unbiased]
         output += groups[i, 1][:num_biased]
-
     random_seeded = random.Random(1)
     random_seeded.shuffle(output)
     return output
 
-#== Lexical Overlap Biasing Methods ===============================================================#
-def lexical_overlap_score(text_1:str, text_2:str)->float:
-        word_list_1 = remove_stopwords(text_1)
-        word_list_2 = remove_stopwords(text_2)
-    
-        intersection = set(word_list_1) & set(word_list_2)
-        union = set(word_list_1 + word_list_2)
-        if len(union) == 0: 
-            return None
-        overlap_score = len(intersection)/len(union)
-        return overlap_score
+def inverse_biased_data(data:list, bias_name:str, bias_bounds:list, lim:int=None)->list:
+    groups = group_by_bias(data=data, bias_name=bias_name, bias_bounds=bias_bounds, lim=lim)
+    num_classes = len(set([x[0] for x in groups.keys()]))
 
-def filter_by_lexical_overlap(data:list, lower:float=0, upper:float=1)->list:
-    output = []
-    for ex in tqdm(data):
-        overlap_score = lexical_overlap_score(ex.text_1, ex.text_2)
-        if overlap_score is None: continue
-        if lower <= overlap_score <= upper:
-            output.append(ex)
-    return output
-
-def group_by_lexical_overlap(data:list, reverse=False, lim:int=None)->defaultdict:
-    # for efficiency, only iterate through enough data
-    load_lim = min(lim * 20, len(data)) if lim else len(data)
-
-    # set random seed (for reproducibility) and shuffle data
-    data = deepcopy(data)
-    random_seeded = random.Random(1)
-    random_seeded.shuffle(data)
-    
-    groups = defaultdict(list)
-    for ex in tqdm(data[:load_lim], total=load_lim, disable=load_lim<2000):
-        overlap_score = lexical_overlap_score(ex.text_1, ex.text_2)
-        if overlap_score is None: continue
-
-        if not reverse:
-            if   overlap_score >= 0.5:        groups[ex.label, 0].append(ex)
-            elif 0.05 < overlap_score < 0.5:  groups[ex.label, 1].append(ex)
-            elif overlap_score <= 0.05:       groups[ex.label, 2].append(ex)
-        else:
-            if   overlap_score >= 0.5:        groups[ex.label, 2].append(ex)
-            elif 0.05 < overlap_score < 0.5:  groups[ex.label, 1].append(ex)
-            elif overlap_score <= 0.05:       groups[ex.label, 0].append(ex)
-    return groups
-
-def create_balanced_lexical_biased_data(data:list, bias_acc:float=1, reverse=False, lim:int=None)->list:
-    groups = group_by_lexical_overlap(data=data, reverse=reverse, lim=lim)
-    
     # separate groups into biased and unbiased:
-    new_groups = defaultdict(list)
-    for i in [0,1,2]:
-        new_groups[i,1] = groups[i,i]
-        new_groups[i,0] = groups[i, (i-1)//3] + groups[i, (i+1)//3]
-    groups = new_groups
-
-    # calculate number of biased rounds to have
-    num_biased = min([len(groups[i,1]) for i in [0,1,2]])
-    if lim: 
-        num_biased = round((lim * bias_acc)/3)
-    
-    # calculate number of unbiased rounds to have [ b/(u+b) = acc ]
-    num_unbiased = num_biased * ((1 - bias_acc) / bias_acc)
-    num_unbiased = int(num_unbiased)
-
-    # correction if number of samples is impossible
-    min_num_unbiased_per_class = min([len(groups[i,0]) for i in [0,1,2]])
-    if num_unbiased > min_num_unbiased_per_class:
-        num_unbiased = min_num_unbiased_per_class
-        num_biased = (bias_acc / (1 - bias_acc)) * num_unbiased
-        num_biased = round(num_biased)
-
-    assert(min(num_biased, num_unbiased) >= 0)
-    print(f'# SAMPLES: {3*(num_unbiased + num_biased)}    BIAS_ACC: {num_biased/(num_unbiased + num_biased):.3f}')
+    groups = sort_groups_into_biased(groups)
 
     # create final output
     output = []
-    for i in [0,1,2]:
-        output += groups[i, 0][:num_unbiased]
-        output += groups[i, 1][:num_biased]
-
-    random_seeded = random.Random(1)
-    random_seeded.shuffle(output)
-    return output
-
-def create_balanced_inverse_lexical_bias(data:list, bias_acc:float=1, reverse=False, lim:int=None)->list:
-    groups = group_by_lexical_overlap(data=data, reverse=reverse, lim=lim)
-    
-    # only look for (0, 2) (entailment with no lexical overlap) and (2,0) (contradiction with high lexical overlap)
-    num_unbiased = min(len(groups[0,2]), len(groups[2,0]))
-    output = groups[0,2][:num_unbiased] + groups[2,0][:num_unbiased]
-
+    for i in range(num_classes):
+        output += groups[i, 0]
     random_seeded = random.Random(1)
     random_seeded.shuffle(output)
     return output

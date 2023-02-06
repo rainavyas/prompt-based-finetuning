@@ -9,6 +9,7 @@ from collections import namedtuple
 from types import SimpleNamespace
 from typing import Optional
 from tqdm import tqdm
+from copy import deepcopy
 
 from .batcher import Batcher
 from ..data.handler import DataHandler
@@ -34,13 +35,16 @@ class Trainer(object):
         # set up attributes 
         self.model_args = args
         self.data_handler = DataHandler(trans_name=args.transformer, prompt_finetuning=args.prompt_finetuning)
-
         self.batcher = Batcher(max_len=args.maxlen)
+
+        # set up model
         if args.prompt_finetuning:
             assert len(args.label_words) == args.num_classes
             self.model = PromptFinetuning(trans_name=args.transformer, label_words=args.label_words)
         else:
             self.model = TransformerModel(trans_name=args.transformer, num_classes=args.num_classes)
+        self.log_num_params()
+
         self.model_loss = CrossEntropyLoss(self.model)
 
     #== Main Training Methods =====================================================================#
@@ -55,25 +59,25 @@ class Trainer(object):
         # set up model
         self.to(args.device)
         self.model.train()
-        self.log_num_params()
 
         # Reset loss metrics
         self.best_dev = ('0-start', {})
         self.model_loss.reset_metrics()
 
         # Get train, val, test split of data
-        train, dev, test = self.data_handler.prep_data(args.dataset, args.bias, args.lim)
+        train, dev, test = self.data_handler.prep_data(
+            data_name=args.dataset, 
+            bias=args.bias, 
+            lim=args.lim
+        )
         
         # Setup wandb for online tracking of experiments
         if args.wandb: self.setup_wandb(args)
 
-        epoch = 1
+        if args.freeze_trans in ['probe-finetune', 'freeze']:
+            self.model.freeze_transformer()
+        
         for epoch in range(1, args.epochs+1):
-            # freeze transformer for first couple of epochs if set
-            if args.freeze_trans:
-                if epoch <= args.freeze_trans: self.model.freeze_transformer()
-                else: self.model.unfreeze_transformer()
-
             #== Training =============================================
             train_batches = self.batcher(
                 data = train, 
@@ -111,9 +115,26 @@ class Trainer(object):
             #== Validation ============================================
             self.validate(dev, epoch, ex_step='end', wandb=args.wandb)
 
-            # best_epoch = int(self.best_dev[0].split('-')[0])
-            #if epoch - best_epoch >= 5:
-            #    break
+            best_epoch = int(self.best_dev[0].split('-')[0])
+            if epoch - best_epoch >= 3:
+                break
+
+        #== Retraining for Frozen + Prompt-finetuning
+        if args.freeze_trans == 'probe-finetune':
+            # load best linear probing model
+            self.load_model()
+            
+            # overwrite args to not freeze layers
+            self.model.unfreeze_transformer()
+            args2 = deepcopy(args)
+            setattr(args2, 'freeze_trans', None)
+            
+            # train model with finetuning
+            self.train(args2)
+
+            # save old args
+            self.save_args('train_args.json', args)
+
 
     def validate(self, dev, epoch:int, ex_step:int=None, wandb=False):
         metrics = self.run_validation(dev, mode='dev')
@@ -220,6 +241,7 @@ class Trainer(object):
         formatter = logging.Formatter('%(asctime)s - %(levelname)s - %(message)s', datefmt='%Y-%m-%d %H:%M:%S')
         fh.setFormatter(formatter)
         fh.setLevel(logging.INFO)
+        logger.handlers.clear()
         logger.addHandler(fh)
 
         # set random seed

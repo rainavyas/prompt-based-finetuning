@@ -14,14 +14,16 @@ class SingleText(TypedDict):
 
 #== Main loading function =========================================================================# 
 
-HF_CLS_DATA = ['imdb', 'rt', 'sst', 'yelp', 'boolq']
+HF_CLS_DATA = ['imdb', 'imdb-s', 'rt', 'sst', 'yelp', 'boolq']
 def load_hf_cls_data(data_name)->Tuple[List[SingleText], List[SingleText], List[SingleText]]:
     """ loading sentiment classification datsets available on huggingface hub """
-    if   data_name == 'imdb':  train, dev, test = load_imdb()
-    elif data_name == 'rt':    train, dev, test = load_rotten_tomatoes()
-    elif data_name == 'sst':   train, dev, test = load_sst()
-    elif data_name == 'yelp':  train, dev, test = load_yelp()
-    elif data_name == 'boolq': train, dev, test = load_boolq()
+    if   data_name == 'imdb':   train, dev, test = load_imdb()
+    elif data_name == 'imdb-s': train, dev, test = load_imdb_small()
+    elif data_name == 'rt':     train, dev, test = load_rotten_tomatoes()
+    elif data_name == 'sst':    train, dev, test = load_sst()
+    elif data_name == 'yelp':   train, dev, test = load_yelp()
+    elif data_name == 'boolq':  train, dev, test = load_boolq()
+
     else: raise ValueError(f"invalid single text dataset name: {data_name}")
     return train, dev, test
     
@@ -32,6 +34,13 @@ def load_imdb()->Tuple[List[SingleText], List[SingleText], List[SingleText]]:
     train, dev = _create_splits(train_data, 0.8)
     test       = list(dataset['test'])
     train, dev, test = _remove_html_tags(train, dev, test)
+    return train, dev, test
+
+def load_imdb_small()->Tuple[List[SingleText], List[SingleText], List[SingleText]]:
+    train, dev, test = load_imdb()
+    train = rand_select(train, 5000)
+    dev   = rand_select(dev, 5000)
+    test  = rand_select(test, 5000)    
     return train, dev, test
 
 def load_yelp()->Tuple[List[SingleText], List[SingleText], List[SingleText]]:
@@ -100,3 +109,9 @@ def _remove_html_tags_ex(ex:dict):
     ex['text'] = re.sub(CLEANR, '', ex['text'])
     return ex
   
+def rand_select(data:list, lim:None):
+    if data is None: return None
+    random_seed = random.Random(1)
+    data = data.copy()
+    random_seed.shuffle(data)
+    return data[:lim]

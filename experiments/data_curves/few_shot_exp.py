@@ -32,13 +32,13 @@ train_parser.add_argument('--dataset', default='snli', type=str, help='dataset t
 train_parser.add_argument('--ood', default=None, type=str, nargs = '+', help='OOD dataset to evaluate models on')
 train_parser.add_argument('--bias', type=str, default='balanced',  help='whether data should be synthetically biased (e.g. lexical)')
 train_parser.add_argument('--lim', type=int, default=None,  help='size of data subset to use for debugging')
-train_parser.add_argument('--epochs', type=int, default=10, help='number of epochs to train system for')
+train_parser.add_argument('--epochs', type=int, default=12, help='number of epochs to train system for')
 train_parser.add_argument('--bsz', type=int, default=8, help='training batch size')
 train_parser.add_argument('--lr', type=float, default=1e-5, help='learning rate')
 train_parser.add_argument('--data-ordering', action='store_true', help='dynamically batches to minimize padding')
 
 train_parser.add_argument('--grad-clip', type=float, default=1, help='gradient clipping')
-train_parser.add_argument('--freeze-trans', type=int, default=None, help='number of epochs to freeze transformer')
+train_parser.add_argument('--freeze-trans', type=str, default=None, help='number of epochs to freeze transformer')
 
 train_parser.add_argument('--log-every', type=int, default=1000, help='logging training metrics every number of examples')
 train_parser.add_argument('--val-every', type=int, default=100_000, help='when validation should be done within epoch')
@@ -68,17 +68,19 @@ if __name__ == '__main__':
     if os.path.isfile(os.path.join(model_args.path, 'curve.json')):
         performance_cache = load_json(os.path.join(model_args.path, 'curve.json'))
         for lim in performance_cache.keys():
-            performances[lim] = performance_cache[lim]
+            performances[int(lim)] = performance_cache[lim]
 
-    for lim in [10, 100, 1000, 5_000, 10_000, 50_000, 20, 50, 200, 500, 2_000, 20_000, 100_000, 200_000]:
+    for lim in [100, 1_000, 4_000, 10_000, 40_000, 100_000, 200_000, 400_000]: #10, 20, 40, 200, 400, 4_000, 20_000
         # check whether enough data samples, and exit if so
-        train_data = DataHandler.load_split(train_args.dataset, 'train', 'balanced', lim)
+        train_data = DataHandler.load_split(train_args.dataset, mode='train', bias='balanced', lim=lim)
+        print(len(train_data) < lim-2, len(train_data), lim-2)
+
         if len(train_data) < lim-2:
             continue
 
         for seed_num in [1, 2, 3, 4, 5]:
             # skip runs already done in previous submissions
-            if str(seed_num) in performances[str(lim)]:
+            if str(seed_num) in performances[lim]:
                 continue
 
             #== Training ==========================================================================#
@@ -93,7 +95,7 @@ if __name__ == '__main__':
             trainer = Trainer(exp_path, model_args)
             
             # reduce number of epochs for training on larger splits
-            if lim >= 5000:  setattr(train_args, 'epochs', 5)
+            # if lim >= 5000:  setattr(train_args, 'epochs', 5)
 
             # train the model
             trainer.train(train_args)
