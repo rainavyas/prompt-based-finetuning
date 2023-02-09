@@ -30,6 +30,7 @@ class Trainer(object):
     def __init__(self, path: str, args: namedtuple):
         self.setup_exp(path, args)
         self.setup_helpers(args)
+        self.log_num_params()
 
     def setup_helpers(self, args: namedtuple):
         # set up attributes 
@@ -43,7 +44,6 @@ class Trainer(object):
             self.model = PromptFinetuning(trans_name=args.transformer, label_words=args.label_words)
         else:
             self.model = TransformerModel(trans_name=args.transformer, num_classes=args.num_classes)
-        self.log_num_params()
 
         self.model_loss = CrossEntropyLoss(self.model)
 
@@ -76,6 +76,8 @@ class Trainer(object):
 
         if args.freeze_trans in ['probe-finetune', 'freeze']:
             self.model.freeze_transformer()
+        elif args.freeze_trans == 'head':
+            self.model.freeze_head()
         
         for epoch in range(1, args.epochs+1):
             #== Training =============================================
@@ -134,7 +136,6 @@ class Trainer(object):
 
             # save old args
             self.save_args('train_args.json', args)
-
 
     def validate(self, dev, epoch:int, ex_step:int=None, wandb=False):
         metrics = self.run_validation(dev, mode='dev')

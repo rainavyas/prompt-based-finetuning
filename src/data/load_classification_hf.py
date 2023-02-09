@@ -14,20 +14,33 @@ class SingleText(TypedDict):
 
 #== Main loading function =========================================================================# 
 
-HF_CLS_DATA = ['imdb', 'imdb-s', 'rt', 'sst', 'yelp', 'boolq']
+HF_CLS_DATA = ['imdb', 'rt', 'sst', 'yelp', 'amazon']
+HF_CLS_DATA += [i+'-s' for i in HF_CLS_DATA] # add smaller versions
+
 def load_hf_cls_data(data_name)->Tuple[List[SingleText], List[SingleText], List[SingleText]]:
     """ loading sentiment classification datsets available on huggingface hub """
-    if   data_name == 'imdb':   train, dev, test = load_imdb()
-    elif data_name == 'imdb-s': train, dev, test = load_imdb_small()
-    elif data_name == 'rt':     train, dev, test = load_rotten_tomatoes()
-    elif data_name == 'sst':    train, dev, test = load_sst()
-    elif data_name == 'yelp':   train, dev, test = load_yelp()
-    elif data_name == 'boolq':  train, dev, test = load_boolq()
+    # if small version needed, split dataset name:
+    small = False
+    if data_name[-2:] == '-s':
+        data_name, _ = data_name.split('-s')
+        small = True
 
+    # get the relevant data
+    if   data_name == 'imdb':    train, dev, test = load_imdb()
+    elif data_name == 'rt':      train, dev, test = load_rotten_tomatoes()
+    elif data_name == 'sst':     train, dev, test = load_sst()
+    elif data_name == 'yelp':    train, dev, test = load_yelp()
+    elif data_name == 'amazon':  train, dev, test = load_amazon()
     else: raise ValueError(f"invalid single text dataset name: {data_name}")
+
+    # if small, then randomly select 5000 points for test
+    if small:
+        train = rand_select(train, 5000)
+        dev   = rand_select(dev, 5000)
+        test  = rand_select(test, 5000)   
     return train, dev, test
     
-#== Individual Data set Loader Functions ==========================================================#
+#== sentiment analysis datasets ===================================================================#
 def load_imdb()->Tuple[List[SingleText], List[SingleText], List[SingleText]]:
     dataset = load_dataset("imdb")
     train_data = list(dataset['train'])
@@ -36,28 +49,20 @@ def load_imdb()->Tuple[List[SingleText], List[SingleText], List[SingleText]]:
     train, dev, test = _remove_html_tags(train, dev, test)
     return train, dev, test
 
-def load_imdb_small()->Tuple[List[SingleText], List[SingleText], List[SingleText]]:
-    train, dev, test = load_imdb()
-    train = rand_select(train, 5000)
-    dev   = rand_select(dev, 5000)
-    test  = rand_select(test, 5000)    
-    return train, dev, test
-
 def load_yelp()->Tuple[List[SingleText], List[SingleText], List[SingleText]]:
-    dataset = load_dataset("yelp_review_full")
+    dataset = load_dataset("yelp_polarity")
     train_data = list(dataset['train'])
     train, dev = _create_splits(train_data, 0.8)
     test       = list(dataset['test'])
     return train, dev, test
 
-def load_boolq()->Tuple[List[SingleText], List[SingleText], List[SingleText]]:
-    dataset = load_dataset("super_glue", "boolq")
+def load_amazon()->Tuple[List[SingleText], List[SingleText], List[SingleText]]:
+    dataset = load_dataset("mteb/amazon_polarity")
     train_data = list(dataset['train'])
     train, dev = _create_splits(train_data, 0.8)
-    test   = list(dataset['validation'])
-    train, dev, test = _rename_keys(train, dev, test, old_key='passage', new_key='text')
+    test       = list(dataset['test'])
     return train, dev, test
-
+   
 def load_rotten_tomatoes()->Tuple[List[SingleText], List[SingleText], List[SingleText]]:
     dataset = load_dataset("rotten_tomatoes")
     train = list(dataset['train'])

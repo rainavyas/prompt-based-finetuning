@@ -3,7 +3,7 @@ import random
 from copy import deepcopy
 from typing import List, Dict, Tuple, TypedDict
 from datasets import load_dataset
-from .load_classification_hf import _create_splits, _rename_keys
+from .load_classification_hf import _create_splits, _rename_keys, rand_select
 
 class TextPair(TypedDict):
     """Output example formatting (only here for documentation)"""
@@ -13,10 +13,20 @@ class TextPair(TypedDict):
 
 #== main loading function ==============================================================================# 
 HF_NLI_DATA = ['snli', 'mnli', 'hans', 'anli']
+HF_NLI_DATA += [i+'-s' for i in HF_NLI_DATA] # add smaller versions
+
 HF_PARA_DATA = ['qqp', 'mrpc', 'paws']
+HF_PARA_DATA += [i+'-s' for i in HF_NLI_DATA] # add smaller versions
 
 def load_hf_pair_data(data_name):
     """ loading NLI datsets available on huggingface hub """
+    # if small version needed, split dataset name:
+    small = False
+    if data_name[-2:] == '-s':
+        data_name, _ = data_name.split('-s')
+        small = True
+
+     # get the relevant data
     if   data_name == 'snli'  : train, dev, test = load_snli()
     elif data_name == 'mnli'  : train, dev, test = load_mnli()
     elif data_name == 'mnli-u': train, dev, test = load_mnli_unmatched()
@@ -26,6 +36,13 @@ def load_hf_pair_data(data_name):
     elif data_name == 'mrpc'  : train, dev, test = load_mrpc()
     elif data_name == 'paws'  : train, dev, test = load_paws()
     else: raise ValueError(f"invalid text pair dataset name: {data_name}")
+
+    # if small, then randomly select 5000 points for test
+    if small:
+        train = rand_select(train, 5000)
+        dev   = rand_select(dev, 5000)
+        test  = rand_select(test, 5000)   
+
     return train, dev, test
 
 #== NLI dataset loader ============================================================================#
@@ -62,6 +79,7 @@ def load_mnli_unmatched()->Tuple[List[TextPair], List[TextPair], List[TextPair]]
     train, dev, test = _rename_keys(train, dev, test, old_key='premise',    new_key='text_1')
     train, dev, test = _rename_keys(train, dev, test, old_key='hypothesis', new_key='text_2')
     return train, dev, test
+
 
 def load_hans()->Tuple[List[TextPair], List[TextPair], List[TextPair]]:
     dataset = load_dataset("hans")
@@ -103,7 +121,6 @@ def load_mrpc()->Tuple[List[TextPair], List[TextPair], List[TextPair]]:
     dev   = list(dataset[f'validation'])
     test  = list(dataset[f'test'])
 
-    print(len(train), len(dev), len(test))
     train, dev, test = _rename_keys(train, dev, test, old_key='sentence1', new_key='text_1')
     train, dev, test = _rename_keys(train, dev, test, old_key='sentence2', new_key='text_2')
     return train, dev, test

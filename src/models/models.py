@@ -91,3 +91,11 @@ class PromptFinetuning(torch.nn.Module):
             h = None, 
             logits=logits
         )
+
+    def update_label_words(self, label_words:str):
+        self.label_ids = [self.tokenizer(word).input_ids[1] for word in label_words]
+
+    def freeze_head(self):
+        for param in self.transformer.lm_head.parameters():
+            param.requires_grad = False
+

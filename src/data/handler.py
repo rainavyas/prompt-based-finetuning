@@ -98,8 +98,6 @@ class DataHandler:
                 text_1 = ex.text_1.strip().rstrip('?,.!')
 
                 # get the prompt input ids
-                print(f'{text_1} {self.tokenizer.mask_token}, {ex.text_2}')
-                import time; time.sleep(2)
                 ex.input_ids = self.tokenizer(f'{text_1} {self.tokenizer.mask_token}, {ex.text_2}').input_ids
                 assert ex.input_ids.count(self.tokenizer.mask_token_id) == 1
                 ex.mask_position = ex.input_ids.index(self.tokenizer.mask_token_id)
