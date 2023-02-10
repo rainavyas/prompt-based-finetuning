@@ -65,4 +65,5 @@ if __name__ == '__main__':
     trainer = Trainer(model_args.path, model_args)
     if train_args.lim == 0:
         trainer.save_model()
-    trainer.train(train_args)
+    else:
+        trainer.train(train_args)
