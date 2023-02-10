@@ -24,7 +24,7 @@ model_parser.add_argument('--rand-seed', type=int, default=None, help='random se
 ### Training arguments
 train_parser = argparse.ArgumentParser(description='Arguments for training the system')
 train_parser.add_argument('--dataset', type=str, default='sst', help='dataset to train the system on')
-train_parser.add_argument('--bias', type=str, default=None, help='whether data should be synthetically biased (e.g. lexical)')
+train_parser.add_argument('--bias', type=str, default='balanced', help='whether data should be synthetically biased (e.g. lexical)')
 train_parser.add_argument('--bias-bounds', type=float, nargs = '+', default=None, help='where the bias groups should be splits')
 
 train_parser.add_argument('--lim', type=int, default=None, help='size of data subset to use for debugging')
