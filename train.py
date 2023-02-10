@@ -47,6 +47,12 @@ if __name__ == '__main__':
     # Parse system input arguments
     model_args, moargs = model_parser.parse_known_args()
     train_args, toargs = train_parser.parse_known_args()
+    
+     # Save the command run
+    if not os.path.isdir('CMDs'):
+        os.mkdir('CMDs')
+    with open('CMDs/train.cmd', 'a') as f:
+        f.write(' '.join(sys.argv)+'\n')
 
     # Making sure no unkown arguments are given
     assert set(moargs).isdisjoint(toargs), f"{set(moargs) & set(toargs)}"
