@@ -61,4 +61,6 @@ if __name__ == '__main__':
     logger.info(train_args.__dict__)
     
     trainer = Trainer(model_args.path, model_args)
+    if train_args.lim == 0:
+        trainer.save_model()
     trainer.train(train_args)
