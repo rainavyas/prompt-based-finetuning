@@ -15,15 +15,15 @@ if __name__ == '__main__':
     eval_parser.add_argument('--lim', type=int, default=None, help='whether subset of data to be used') 
     args = eval_parser.parse_args()
 
-    #get seed paths
-    seed_paths = [os.path.join(args.path, seed) for seed in os.listdir(args.path)]
-    seed_paths = [seed for seed in seed_paths if os.path.isdir(seed)]
+#     #get seed paths
+#     seed_paths = [os.path.join(args.path, seed) for seed in os.listdir(args.path)]
+#     seed_paths = [seed for seed in seed_paths if os.path.isdir(seed)]
     
     #initialise performance
     perf = []
     
     for seed_path in seed_paths:
-        evaluator = Evaluator(seed_path, args.device)
+        evaluator = Evaluator(args.path, args.device)
         preds = evaluator.load_preds(args.dataset, args.mode)
         labels = evaluator.load_labels(args.dataset, args.mode)
         acc = evaluator.calc_acc(preds, labels)
