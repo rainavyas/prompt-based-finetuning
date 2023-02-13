@@ -3,7 +3,6 @@ import os
 import numpy as np
 
 from src.handlers.evaluater import Evaluator
-from src.handlers.seq2seq_evaluater import Seq2seqEvaluator
 
 
 if __name__ == '__main__':
