@@ -71,7 +71,6 @@ class PromptFinetuning(torch.nn.Module):
         attention_mask=None,
         mask_positions=None,
     ):
-        import pdb; pdb.set_trace()
         # encode everything and get MLM probabilities
         trans_output = self.transformer(
             input_ids=input_ids,
